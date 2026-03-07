@@ -35,6 +35,15 @@
   fileSystems."/mnt/hpool/data/stacks/qbittorrent" = { device = "hpool/data/stacks/qbittorrent"; fsType = "zfs"; };
   fileSystems."/mnt/hpool/data/stacks/uptimekuma" = { device = "hpool/data/stacks/uptimekuma"; fsType = "zfs"; };
 
+  services.zfs.autoScrub = {
+    enable = true;
+    interval = "monthly"; # or "monthly", "daily", etc.
+  };
+  services.zfs.trim = {
+    enable = true;
+    interval = "weekly";
+  };
+
   # =========================================
   # Networking
   # =========================================
@@ -53,6 +62,9 @@
   };
 
   services.tailscale.enable = true;
+
+  services.openssh.enable = true;
+  services.openssh.settings.PasswordAuthentication = true; # Set to false if using keys
 
   # =========================================
   # Localization & Time
@@ -78,9 +90,13 @@
     enable = true;
     xkb.layout = "us";
     xkb.variant = "";
-    displayManager.lightdm.enable = true;
-    desktopManager.cinnamon.enable = true;
   };
+  services.displayManager.sddm.enable = true;
+  services.desktopManager.plasma6.enable = true;
+
+  # Remove or comment out Cinnamon/LightDM
+  # services.xserver.displayManager.lightdm.enable = true;
+  # services.xserver.desktopManager.cinnamon.enable = true;
 
   services.printing.enable = true;
 
@@ -98,6 +114,8 @@
   # Packages & Software Environment
   # =========================================
   nixpkgs.config.allowUnfree = true;
+
+  programs.nix-ld.enable = true;
 
   programs.firefox.enable = true;
 
@@ -117,6 +135,7 @@
     tailscale
     gnome-system-monitor
     google-chrome
+    jellyfin-media-player
   ];
 
   services.flatpak.enable = true;
@@ -129,6 +148,13 @@
       RemainAfterExit = true;
       ExecStart = "${pkgs.flatpak}/bin/flatpak remote-add --if-not-exists --system flathub https://flathub.org/repo/flathub.flatpakrepo";
     };
+  };
+
+  programs._1password.enable = true;
+  programs._1password-gui = {
+    enable = true;
+    # This is the critical part for browser integration
+    polkitPolicyOwners = [ "user" ];
   };
 
   # =========================================
