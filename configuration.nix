@@ -101,6 +101,8 @@
 
   programs.firefox.enable = true;
 
+  programs.fish.enable = true;
+
   environment.systemPackages = with pkgs; [
     zfs
     docker-compose
@@ -113,6 +115,8 @@
     btop
     restic
     tailscale
+    gnome-system-monitor
+    google-chrome
   ];
 
   services.flatpak.enable = true;
@@ -139,6 +143,7 @@
       _1password-gui
       cherry-studio
     ];
+    shell = pkgs.fish;
   };
 
   # =========================================
