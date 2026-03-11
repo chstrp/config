@@ -22,11 +22,7 @@
   # =========================================
   # File Systems
   # =========================================
-  fileSystems."/mnt/hpool" = {
-    device = "hpool";
-    fsType = "zfs";
-    options = [ "nofail" ];
-  };
+  fileSystems."/mnt/hpool" = { device = "hpool"; fsType = "zfs"; options = [ "nofail" ]; };
   fileSystems."/mnt/hpool/data" = { device = "hpool/data"; fsType = "zfs"; };
   fileSystems."/mnt/hpool/media" = { device = "hpool/media"; fsType = "zfs"; };
   fileSystems."/mnt/hpool/backup" = { device = "hpool/backup"; fsType = "zfs"; };
@@ -94,10 +90,6 @@
   services.displayManager.sddm.enable = true;
   services.desktopManager.plasma6.enable = true;
 
-  # Remove or comment out Cinnamon/LightDM
-  # services.xserver.displayManager.lightdm.enable = true;
-  # services.xserver.desktopManager.cinnamon.enable = true;
-
   services.printing.enable = true;
 
   # Audio
@@ -113,6 +105,8 @@
   # =========================================
   # Packages & Software Environment
   # =========================================
+  nix.settings.experimental-features = [ "nix-command" "flakes" ];
+
   nixpkgs.config.allowUnfree = true;
 
   programs.nix-ld.enable = true;
@@ -136,6 +130,8 @@
     gnome-system-monitor
     google-chrome
     jellyfin-media-player
+    freefilesync
+    adguardhome
   ];
 
   services.flatpak.enable = true;
@@ -157,6 +153,12 @@
     polkitPolicyOwners = [ "user" ];
   };
 
+  programs.steam = {
+    enable = true;
+    remotePlay.openFirewall = true;
+    dedicatedServer.openFirewall = true;
+  };
+
   # =========================================
   # Users
   # =========================================
@@ -168,6 +170,8 @@
       obsidian
       _1password-gui
       cherry-studio
+      whatsapp-electron
+      haruna
     ];
     shell = pkgs.fish;
   };
