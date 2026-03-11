@@ -1,4 +1,4 @@
-{ config, pkgs, ... }:
+{ config, pkgs, lib, ... }:
 
 {
   imports = [
@@ -46,6 +46,7 @@
   networking.hostName = "nixos";
   networking.hostId = "90bfa1ac"; # Required for ZFS
   networking.networkmanager.enable = true;
+  networking.firewall.allowedTCPPorts = [ 8080 ];
 
   services.avahi = {
     enable = true;
@@ -126,12 +127,13 @@
     kdePackages.kate
     btop
     restic
+    restic-browser
     tailscale
     gnome-system-monitor
     google-chrome
     jellyfin-media-player
     freefilesync
-    adguardhome
+    apacheHttpd
   ];
 
   services.flatpak.enable = true;
@@ -165,7 +167,7 @@
   users.users.user = {
     isNormalUser = true;
     description = "user";
-    extraGroups = [ "networkmanager" "wheel" "docker" ];
+    extraGroups = [ "networkmanager" "wheel" "docker" "webdav"];
     packages = with pkgs; [
       obsidian
       _1password-gui
@@ -175,6 +177,10 @@
     ];
     shell = pkgs.fish;
   };
+
+  users.users.nginx.extraGroups = [ "webdav" ];
+
+  users.groups.webdav = {};
 
   # =========================================
   # Virtualization & Containers
@@ -251,6 +257,47 @@
       ${pkgs.curl}/bin/curl -fsS --max-time 10 --retry 3 --retry-delay 1 --retry-connrefused "https://hc-ping.com/dbc0f3e9-0425-490c-9719-2ecb7ca9973b" > /dev/null 2>&1
     '';
   };
+
+  systemd.services.nginx.serviceConfig = {
+    ReadWritePaths = [ "/srv/webdav" "/var/cache/nginx/client_body" ];
+    ProtectSystem = lib.mkForce "full";
+  };
+
+
+  systemd.tmpfiles.rules = [
+    "d /var/cache/nginx/client_body 0700 nginx webdav -"
+    "d /srv/webdav 0775 nginx webdav -"
+  ];
+
+  services.nginx = {
+    enable = true;
+    group = "webdav"; # Crucial for folder permissions
+    package = pkgs.nginx.override {
+      withDav = true;
+      withDavExt = true;
+    };
+
+    virtualHosts."10.0.0.2" = {
+      # Moved inside virtualHost to ensure it's applied to the auth scope
+      basicAuthFile = "/etc/nginx/htpasswd";
+      listen = [{ addr = "10.0.0.2"; port = 8080; }];
+
+      locations."/dav/" = {
+        alias = "/srv/webdav/";
+        extraConfig = ''
+          dav_methods PUT DELETE MKCOL COPY MOVE;
+          dav_ext_methods PROPFIND OPTIONS;
+          dav_access user:rw group:rw all:r;
+          create_full_put_path on;
+          autoindex on;
+          client_max_body_size 0;
+          client_body_temp_path /var/cache/nginx/client_body;
+          add_header 'Dav' '1, 2' always;
+        '';
+      };
+    };
+  };
+
 
   # =========================================
   # System Version
