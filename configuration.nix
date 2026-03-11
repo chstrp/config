@@ -5,9 +5,9 @@
     ./hardware-configuration.nix
   ];
 
-  # =========================================
-  # Boot & Hardware
-  # =========================================
+  # =======================================================================================================================
+  # BOOT & HARDWARE
+  # =======================================================================================================================
   boot.loader.systemd-boot.enable = true;
   boot.loader.efi.canTouchEfiVariables = true;
   
@@ -19,9 +19,9 @@
 
   services.smartd.enable = true;
 
-  # =========================================
-  # File Systems
-  # =========================================
+  # =======================================================================================================================
+  # FILE SYSTEMS
+  # =======================================================================================================================
   fileSystems."/mnt/hpool" = { device = "hpool"; fsType = "zfs"; options = [ "nofail" ]; };
   fileSystems."/mnt/hpool/data" = { device = "hpool/data"; fsType = "zfs"; };
   fileSystems."/mnt/hpool/media" = { device = "hpool/media"; fsType = "zfs"; };
@@ -40,9 +40,9 @@
     interval = "weekly";
   };
 
-  # =========================================
-  # Networking
-  # =========================================
+  # =======================================================================================================================
+  # NETWORKING
+  # =======================================================================================================================
   networking.hostName = "nixos";
   networking.hostId = "90bfa1ac"; # Required for ZFS
   networking.networkmanager.enable = true;
@@ -63,9 +63,9 @@
   services.openssh.enable = true;
   services.openssh.settings.PasswordAuthentication = true; # Set to false if using keys
 
-  # =========================================
-  # Localization & Time
-  # =========================================
+  # =======================================================================================================================
+  # LOCALIZATION & TIME
+  # =======================================================================================================================
   time.timeZone = "Asia/Manila";
   i18n.defaultLocale = "en_US.UTF-8";
   i18n.extraLocaleSettings = {
@@ -80,9 +80,9 @@
     LC_TIME = "en_US.UTF-8";
   };
 
-  # =========================================
-  # Desktop & Graphical
-  # =========================================
+  # =======================================================================================================================
+  # DESKTOP & GRAPHICAL
+  # =======================================================================================================================
   services.xserver = {
     enable = true;
     xkb.layout = "us";
@@ -103,9 +103,9 @@
     pulse.enable = true;
   };
 
-  # =========================================
-  # Packages & Software Environment
-  # =========================================
+  # =======================================================================================================================
+  # PACKAGES & SOFTWARE ENVIRONMENT
+  # =======================================================================================================================
   nix.settings.experimental-features = [ "nix-command" "flakes" ];
 
   nixpkgs.config.allowUnfree = true;
@@ -161,9 +161,9 @@
     dedicatedServer.openFirewall = true;
   };
 
-  # =========================================
-  # Users
-  # =========================================
+  # =======================================================================================================================
+  # USERS
+  # =======================================================================================================================
   users.users.user = {
     isNormalUser = true;
     description = "user";
@@ -182,9 +182,9 @@
 
   users.groups.webdav = {};
 
-  # =========================================
-  # Virtualization & Containers
-  # =========================================
+  # =======================================================================================================================
+  # VIRTUALIZATION & CONTAINERS
+  # =======================================================================================================================
   virtualisation.docker = {
     enable = true;
     enableOnBoot = true;
@@ -194,9 +194,9 @@
   systemd.services.docker.after = [ "mnt-hpool.mount" ];
   systemd.services.containerd.after = [ "mnt-hpool.mount" ];
 
-  # =========================================
-  # Samba Sharing
-  # =========================================
+  # =======================================================================================================================
+  # SAMBA SHARING
+  # =======================================================================================================================
   services.samba = {
     enable = true;
     openFirewall = true;
@@ -236,9 +236,64 @@
   systemd.services.samba.after = [ "mnt-hpool-data.mount" "mnt-hpool-media.mount" "mnt-hpool-backup.mount" ];
   systemd.services.samba.requires = [ "mnt-hpool-data.mount" "mnt-hpool-media.mount" "mnt-hpool-backup.mount" ];
 
-  # =========================================
-  # Other Services
-  # =========================================
+  # =======================================================================================================================
+  # BACKUP SERVICE
+  # =======================================================================================================================
+
+  systemd.services = {
+    restic-srv = {
+      description = "Restic backup for /srv";
+      serviceConfig = {
+        Type = "oneshot";
+        User = "root";
+        # Note: The password file is specified at /root/.restic-password
+        ExecStart = ''
+          ${pkgs.restic}/bin/restic -r /mnt/hpool/backup/restic/srv --password-file /root/.restic-password backup --compression max /srv
+        '';
+        ExecStartPost = ''
+          ${pkgs.restic}/bin/restic -r /mnt/hpool/backup/restic/srv --password-file /root/.restic-password forget --keep-last 5 --prune
+        '';
+      };
+    };
+
+    restic-home = {
+      description = "Restic backup for /home/user";
+      serviceConfig = {
+        Type = "oneshot";
+        User = "root";
+        ExecStart = ''
+          ${pkgs.restic}/bin/restic -r /mnt/hpool/backup/restic/home+user --password-file /root/.restic-password backup --compression max /home/user
+        '';
+        ExecStartPost = ''
+          ${pkgs.restic}/bin/restic -r /mnt/hpool/backup/restic/home+user --password-file /root/.restic-password forget --keep-last 5 --prune
+        '';
+      };
+    };
+  };
+
+  systemd.timers = {
+    restic-srv = {
+      description = "Run restic srv backup daily at 12 AM";
+      wantedBy = [ "timers.target" ];
+      timerConfig = {
+        OnCalendar = "*-*-* 00:00:00";
+        Persistent = true;
+      };
+    };
+
+    restic-home = {
+      description = "Run restic home backup daily at 3 AM";
+      wantedBy = [ "timers.target" ];
+      timerConfig = {
+        OnCalendar = "*-*-* 03:00:00";
+        Persistent = true;
+      };
+    };
+  };
+
+  # =======================================================================================================================
+  # OTHER SERVICES
+  # =======================================================================================================================
 
   systemd.timers."healthchecks-ping" = {
     wantedBy = [ "timers.target" ];
@@ -299,8 +354,8 @@
   };
 
 
-  # =========================================
-  # System Version
-  # =========================================
+  # =======================================================================================================================
+  # SYSTEM VERSION
+  # =======================================================================================================================
   system.stateVersion = "25.11"; 
 }
