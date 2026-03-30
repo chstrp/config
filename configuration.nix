@@ -3,6 +3,7 @@
 {
   imports = [
     ./hardware-configuration.nix
+    <home-manager/nixos>
   ];
 
   # =======================================================================================================================
@@ -11,13 +12,23 @@
   boot.loader.systemd-boot.enable = true;
   boot.loader.efi.canTouchEfiVariables = true;
   
-  boot.supportedFilesystems = [ "zfs" ];
+  boot.supportedFilesystems = [ "zfs" "fuse" ];
   boot.zfs.requestEncryptionCredentials = true;
   boot.zfs.forceImportRoot = false;
   boot.zfs.extraPools = [ "hpool" ];  
   boot.zfs.devNodes = "/dev/disk/by-id";
 
   services.smartd.enable = true;
+
+  hardware.graphics = {
+    enable = true;
+    extraPackages = with pkgs; [
+      #intel-media-driver # Intel
+      #vaapiIntel         # Older Intel
+      libva-vdpau-driver         # AMD/Nvidia
+      libvdpau-va-gl     # AMD/Nvidia
+    ];
+  };
 
   # =======================================================================================================================
   # FILE SYSTEMS
@@ -27,9 +38,22 @@
   fileSystems."/mnt/hpool/media" = { device = "hpool/media"; fsType = "zfs"; };
   fileSystems."/mnt/hpool/backup" = { device = "hpool/backup"; fsType = "zfs"; };
   fileSystems."/mnt/hpool/data/stacks" = { device = "hpool/data/stacks"; fsType = "zfs"; };
-  fileSystems."/mnt/hpool/data/stacks/karakeep" = { device = "hpool/data/stacks/karakeep"; fsType = "zfs"; };
-  fileSystems."/mnt/hpool/data/stacks/qbittorrent" = { device = "hpool/data/stacks/qbittorrent"; fsType = "zfs"; };
-  fileSystems."/mnt/hpool/data/stacks/uptimekuma" = { device = "hpool/data/stacks/uptimekuma"; fsType = "zfs"; };
+  #fileSystems."/mnt/hpool/data/stacks/karakeep" = { device = "hpool/data/stacks/karakeep"; fsType = "zfs"; };
+  #fileSystems."/mnt/hpool/data/stacks/qbittorrent" = { device = "hpool/data/stacks/qbittorrent"; fsType = "zfs"; };
+  #fileSystems."/mnt/hpool/data/stacks/uptimekuma" = { device = "hpool/data/stacks/uptimekuma"; fsType = "zfs"; };
+
+  fileSystems."/Media" = {
+    device = "/mnt/hpool/media";
+    fsType = "none";
+    options = [ "bind" ];
+  };
+
+  fileSystems."/Downloads" = {
+    device = "/mnt/hpool/data/Downloads";
+    fsType = "none";
+    options = [ "bind" ];
+    depends = [ "/mnt/hpool/data" ];
+  };
 
   services.zfs.autoScrub = {
     enable = true;
@@ -40,13 +64,33 @@
     interval = "weekly";
   };
 
+  systemd.user.services.rclone-mount = {
+    description = "rclone mount chesterpelle";
+    wantedBy = [ "default.target" ];
+    after = [ "network-online.target" ];
+    serviceConfig = {
+      ExecStartPre = "/run/current-system/sw/bin/mkdir -p %h/gdrive";
+      ExecStart = "${pkgs.rclone}/bin/rclone mount chesterpelle: %h/gdrive --allow-non-empty --vfs-cache-mode full";
+      ExecStop = "/run/current-system/sw/bin/fusermount -u %h/gdrive";
+      Restart = "on-failure";
+      RestartSec = "10s";
+      Environment = "PATH=/run/current-system/sw/bin";
+    };
+  };
+
+  # Required for mounting
+  programs.fuse.userAllowOther = true;
+
   # =======================================================================================================================
   # NETWORKING
   # =======================================================================================================================
   networking.hostName = "nixos";
   networking.hostId = "90bfa1ac"; # Required for ZFS
   networking.networkmanager.enable = true;
-  networking.firewall.allowedTCPPorts = [ 8080 ];
+  networking.firewall = {
+    allowedTCPPorts = [ 853 5443 8080 ];
+    allowedUDPPorts = [ 853 784 8853 5443 ];
+  };
 
   services.avahi = {
     enable = true;
@@ -62,6 +106,10 @@
 
   services.openssh.enable = true;
   services.openssh.settings.PasswordAuthentication = true; # Set to false if using keys
+
+  services.resolved.extraConfig = ''
+    DNSStubListener=no
+  '';
 
   # =======================================================================================================================
   # LOCALIZATION & TIME
@@ -103,6 +151,16 @@
     pulse.enable = true;
   };
 
+  services.displayManager.sddm.settings = {
+    General = {
+      # Enable HiDPI support
+      EnableHiDPI = true;
+    };
+  };
+
+# Force specific scaling for Wayland-based SDDM (if using)
+services.displayManager.sddm.wayland.enable = true;
+
   # =======================================================================================================================
   # PACKAGES & SOFTWARE ENVIRONMENT
   # =======================================================================================================================
@@ -114,7 +172,7 @@
 
   programs.firefox.enable = true;
 
-  programs.fish.enable = true;
+  environment.variables.TERMINAL = "ghostty";
 
   environment.systemPackages = with pkgs; [
     zfs
@@ -134,6 +192,22 @@
     jellyfin-media-player
     freefilesync
     apacheHttpd
+    docker-buildx
+    nodejs_24
+    corepack
+    pnpm
+    vorta
+    rclone #cmd: rclone config
+    ghostty
+    fzf
+    aichat
+    git
+    ffmpeg-full
+    libva-utils
+    vlc
+    fuse
+    appimage-run
+    sunshine
   ];
 
   services.flatpak.enable = true;
@@ -161,6 +235,31 @@
     dedicatedServer.openFirewall = true;
   };
 
+  environment.variables.VORTA_ALLOW_SHELL = "1";
+
+  environment.shellAliases = {
+    docs = "cd ~/Documents";
+    backuphome = "sudo btrfs subvolume snapshot -r /home /home_snapshot && sudo btrfs send /home_snapshot | zstd -T0 -3 > /mnt/hpool/backup/btrfs/home_$(date +%Y-%m-%d_%H%M).img.zst && sudo btrfs subvolume delete /home_snapshot";
+    editconf = "sudo nano /etc/nixos/configuration.nix";
+    saveconf = "mkdir -p ~/backup && cp /etc/nixos/configuration.nix ~/backup/configuration.nix.$(date +%Y-%m-%d_%H%M%S).backup";
+    rebuilds = "sudo nixos-rebuild switch";
+    rebuildb = "sudo nixos-rebuild boot && reboot";
+    log = "tail -f /var/log/syslog";
+    myflatpakstarters = "flatpak install flathub com.cherry_ai.CherryStudio com.github.tchx84.Flatseal -y";
+  };
+
+  xdg.portal = {
+    enable = true;
+    extraPortals = [ pkgs.kdePackages.xdg-desktop-portal-kde ];
+  };
+
+  services.sunshine = {
+    enable = true;
+    autoStart = true;
+    capSysAdmin = true; # This fixes the setcap error
+    openFirewall = true; # Optional: opens ports 47984-48010
+  };
+
   # =======================================================================================================================
   # USERS
   # =======================================================================================================================
@@ -171,16 +270,23 @@
     packages = with pkgs; [
       obsidian
       _1password-gui
-      cherry-studio
       whatsapp-electron
       haruna
+      moonlight-qt
+      vscodium
+      devtoolbox
     ];
-    shell = pkgs.fish;
+    shell = pkgs.bash;
+    linger = true;
   };
 
   users.users.nginx.extraGroups = [ "webdav" ];
 
   users.groups.webdav = {};
+
+  home-manager.users.user = { pkgs, ... }: {
+    home.stateVersion = "25.11";
+  };
 
   # =======================================================================================================================
   # VIRTUALIZATION & CONTAINERS
@@ -214,8 +320,6 @@
         "browseable" = "yes";
         "read only" = "no";
         "guest ok" = "no";
-        "create mask" = "0644";
-        "directory mask" = "0755";
       };
       media = {
         "path" = "/mnt/hpool/media";
@@ -235,61 +339,6 @@
   # Ensure Samba starts only after ZFS datasets are mounted
   systemd.services.samba.after = [ "mnt-hpool-data.mount" "mnt-hpool-media.mount" "mnt-hpool-backup.mount" ];
   systemd.services.samba.requires = [ "mnt-hpool-data.mount" "mnt-hpool-media.mount" "mnt-hpool-backup.mount" ];
-
-  # =======================================================================================================================
-  # BACKUP SERVICE
-  # =======================================================================================================================
-
-  systemd.services = {
-    restic-srv = {
-      description = "Restic backup for /srv";
-      serviceConfig = {
-        Type = "oneshot";
-        User = "root";
-        # Note: The password file is specified at /root/.restic-password
-        ExecStart = ''
-          ${pkgs.restic}/bin/restic -r /mnt/hpool/backup/restic/srv --password-file /root/.restic-password backup --compression max /srv
-        '';
-        ExecStartPost = ''
-          ${pkgs.restic}/bin/restic -r /mnt/hpool/backup/restic/srv --password-file /root/.restic-password forget --keep-last 5 --prune
-        '';
-      };
-    };
-
-    restic-home = {
-      description = "Restic backup for /home/user";
-      serviceConfig = {
-        Type = "oneshot";
-        User = "root";
-        ExecStart = ''
-          ${pkgs.restic}/bin/restic -r /mnt/hpool/backup/restic/home+user --password-file /root/.restic-password backup --compression max /home/user
-        '';
-        ExecStartPost = ''
-          ${pkgs.restic}/bin/restic -r /mnt/hpool/backup/restic/home+user --password-file /root/.restic-password forget --keep-last 5 --prune
-        '';
-      };
-    };
-  };
-
-  systemd.timers = {
-    restic-srv = {
-      description = "Run restic srv backup daily at 12 AM";
-      wantedBy = [ "timers.target" ];
-      timerConfig = {
-        OnCalendar = "*-*-* 00:00:00";
-        Persistent = true;
-      };
-    };
-
-    restic-home = {
-      description = "Run restic home backup daily at 3 AM";
-      wantedBy = [ "timers.target" ];
-      timerConfig = {
-        OnCalendar = "*-*-* 03:00:00";
-        Persistent = true;
-      };
-    };
-  };
 
   # =======================================================================================================================
   # OTHER SERVICES
@@ -334,7 +383,7 @@
 
     virtualHosts."10.0.0.2" = {
       # Moved inside virtualHost to ensure it's applied to the auth scope
-      basicAuthFile = "/etc/nginx/htpasswd";
+      basicAuthFile = "/etc/nginx/htpasswd"; #command: nix-shell -p apacheHttpd --run "htpasswd -c /etc/nginx/htpasswd <username>"
       listen = [{ addr = "10.0.0.2"; port = 8080; }];
 
       locations."/dav/" = {
@@ -352,7 +401,6 @@
       };
     };
   };
-
 
   # =======================================================================================================================
   # SYSTEM VERSION
