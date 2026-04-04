@@ -30,6 +30,10 @@
     ];
   };
 
+  hardware.openrazer.enable = true;
+
+  hardware.openrazer.users = [ "user" ];
+
   # =======================================================================================================================
   # FILE SYSTEMS
   # =======================================================================================================================
@@ -37,7 +41,7 @@
   fileSystems."/mnt/hpool/data" = { device = "hpool/data"; fsType = "zfs"; };
   fileSystems."/mnt/hpool/media" = { device = "hpool/media"; fsType = "zfs"; };
   fileSystems."/mnt/hpool/backup" = { device = "hpool/backup"; fsType = "zfs"; };
-  fileSystems."/mnt/hpool/data/stacks" = { device = "hpool/data/stacks"; fsType = "zfs"; };
+  #fileSystems."/mnt/hpool/data/stacks" = { device = "hpool/data/stacks"; fsType = "zfs"; };
   #fileSystems."/mnt/hpool/data/stacks/karakeep" = { device = "hpool/data/stacks/karakeep"; fsType = "zfs"; };
   #fileSystems."/mnt/hpool/data/stacks/qbittorrent" = { device = "hpool/data/stacks/qbittorrent"; fsType = "zfs"; };
   #fileSystems."/mnt/hpool/data/stacks/uptimekuma" = { device = "hpool/data/stacks/uptimekuma"; fsType = "zfs"; };
@@ -208,6 +212,9 @@ services.displayManager.sddm.wayland.enable = true;
     fuse
     appimage-run
     sunshine
+    wget
+    openssl
+    input-remapper
   ];
 
   services.flatpak.enable = true;
@@ -266,7 +273,7 @@ services.displayManager.sddm.wayland.enable = true;
   users.users.user = {
     isNormalUser = true;
     description = "user";
-    extraGroups = [ "networkmanager" "wheel" "docker" "webdav"];
+    extraGroups = [ "networkmanager" "wheel" "docker" "webdav" "openrazer" ];
     packages = with pkgs; [
       obsidian
       _1password-gui
